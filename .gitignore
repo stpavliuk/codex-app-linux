@@ -1,0 +1,11 @@
+build/
+Codex-latest-x64.dmg
+electron-v*-linux-x64.zip
+better-sqlite3-*.tgz
+node-pty-*.tgz
+codex-*-linux-x64.tgz
+src
+pkg
+__pycache__/
+*.pkg.tar.zst
+*.pkg.tar.zst.sig

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Codex
+Comment=OpenAI Codex desktop app
+Exec=codex-app %U
+Icon=codex-app
+Terminal=false
+Categories=Development;
+MimeType=x-scheme-handler/codex;
+StartupNotify=true
