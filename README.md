@@ -1,4 +1,4 @@
-# codex-app-bin
+# codex-app-linux
 
 Unofficial Arch Linux packaging for the OpenAI Codex desktop app.
 
@@ -16,15 +16,8 @@ Build and install from the repo root with:
 makepkg -si
 ```
 
-If you prefer the helper wrapper, it runs the same flow:
-
-```bash
-./packaging-tools/build.sh -si
-```
-
 After installation, launch the app with:
 
 ```bash
 codex-app
 ```
-Fixes the ide picker (rephrase)
