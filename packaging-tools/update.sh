@@ -4,10 +4,9 @@ set -euo pipefail
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_dir"
 
-extract_pkgbuild_var() {
-  local name="$1"
-  sed -n "s/^${name}=//p" PKGBUILD | head -n1 | tr -d "'"
-}
+rpm_repo_url='https://persistent.oaistatic.com/codex-app-prod/linux/rpm/x86_64'
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
 
 update_pkgbuild_var() {
   local name="$1"
@@ -15,95 +14,85 @@ update_pkgbuild_var() {
   sed -i -E "s|^${name}=.*|${name}=${value}|" PKGBUILD
 }
 
-extract_plist_string() {
-  local plist_path="$1"
-  local key="$2"
-  awk -v key="$key" '
-    $0 ~ "<key>" key "</key>" {
-      getline
-      if (match($0, /<string>([^<]+)<\/string>/)) {
-        value = $0
-        sub(/^.*<string>/, "", value)
-        sub(/<\/string>.*$/, "", value)
-        print value
-        exit
-      }
-    }
-  ' "$plist_path"
-}
+curl -L --fail --silent --show-error \
+  "$rpm_repo_url/repodata/repomd.xml" \
+  -o "$tmp_dir/repomd.xml"
 
-extract_codex_cli_version() {
-  local codex_bin="$1"
-  strings -n 8 "$codex_bin" \
-    | grep -Eo '0\.[0-9]+\.[0-9]+' \
-    | sort -Vu \
-    | tail -n1
-}
-
-extract_app_runtime_versions() {
-  local app_dir="$1"
-  python - <<'PY' "$app_dir"
+primary_href="$(python - "$tmp_dir/repomd.xml" <<'PY'
 from pathlib import Path
-import json
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(Path(sys.argv[1])).getroot()
+namespace = {"repo": "http://linux.duke.edu/metadata/repo"}
+location = root.find("repo:data[@type='primary']/repo:location", namespace)
+if location is None or not location.get("href"):
+    raise SystemExit("primary metadata location is missing from repomd.xml")
+print(location.get("href"))
+PY
+)"
+
+curl -L --fail --silent --show-error \
+  "$rpm_repo_url/$primary_href" \
+  -o "$tmp_dir/primary.xml.gz"
+
+eval "$(python - "$tmp_dir/primary.xml.gz" <<'PY'
+from pathlib import Path
+import gzip
 import shlex
 import sys
+import xml.etree.ElementTree as ET
 
+namespace = {"common": "http://linux.duke.edu/metadata/common"}
+with gzip.open(Path(sys.argv[1]), "rb") as stream:
+    root = ET.parse(stream).getroot()
 
-def emit(name: str, value: str) -> None:
-    print(f"{name}={shlex.quote(value)}")
+matches = []
+for package in root.findall("common:package", namespace):
+    name = package.findtext("common:name", namespaces=namespace)
+    arch = package.findtext("common:arch", namespaces=namespace)
+    if name == "chatgpt" and arch == "x86_64":
+        matches.append(package)
 
+if len(matches) != 1:
+    raise SystemExit(f"expected one x86_64 chatgpt package, found {len(matches)}")
 
-root = Path(sys.argv[1])
-package = json.loads((root / "package.json").read_text())
-better_sqlite3 = json.loads((root / "node_modules" / "better-sqlite3" / "package.json").read_text())
-node_pty = json.loads((root / "node_modules" / "node-pty" / "package.json").read_text())
+package = matches[0]
+version = package.find("common:version", namespace)
+checksum = package.find("common:checksum", namespace)
+location = package.find("common:location", namespace)
+if version is None or checksum is None or location is None:
+    raise SystemExit("incomplete package metadata")
+if checksum.get("type") != "sha256":
+    raise SystemExit(f"unsupported checksum type: {checksum.get('type')}")
 
-emit("pkgver", package["version"])
-emit("electron_ver", package["devDependencies"]["electron"].lstrip("^~"))
-emit("better_sqlite3_ver", better_sqlite3["version"])
-emit("node_pty_ver", node_pty["version"])
-PY
+values = {
+    "upstream_pkgver": version.get("ver"),
+    "upstream_rpmrel": version.get("rel"),
+    "upstream_sha256": checksum.text,
+    "upstream_location": location.get("href"),
 }
+if any(not value for value in values.values()):
+    raise SystemExit("empty field in package metadata")
 
-dmg_url="$(extract_pkgbuild_var "_codex_dmg_url")"
-dmg_path="$repo_dir/Codex-latest-x64.dmg"
-tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
+for name, value in values.items():
+    print(f"{name}={shlex.quote(value)}")
+PY
+)"
 
-# Force a fresh upstream fetch so the package is rebuilt from the latest DMG.
-rm -f "$dmg_path"
-rm -f "$repo_dir"/codex-app-bin-*
-
-curl -L --fail --silent --show-error "$dmg_url" -o "$dmg_path"
-7z x -y "$dmg_path" -o"$tmp_dir" >/dev/null
-
-plist_path="$tmp_dir/Codex Installer/Codex.app/Contents/Info.plist"
-codex_bin="$tmp_dir/Codex Installer/Codex.app/Contents/Resources/codex"
-app_resources="$tmp_dir/Codex Installer/Codex.app/Contents/Resources"
-app_dir="$tmp_dir/app"
-
-asar extract "$app_resources/app.asar" "$app_dir" >/dev/null
-
-eval "$(extract_app_runtime_versions "$app_dir")"
-plist_pkgver="$(extract_plist_string "$plist_path" "CFBundleShortVersionString")"
-codex_cli_ver="$(extract_codex_cli_version "$codex_bin")"
-
-if [[ -z "$pkgver" || -z "$plist_pkgver" || -z "$electron_ver" || -z "$better_sqlite3_ver" || -z "$node_pty_ver" || -z "$codex_cli_ver" ]]; then
-  printf 'failed to extract embedded runtime versions from %s\n' "Codex-latest-x64.dmg" >&2
+expected_location="chatgpt-${upstream_pkgver}-${upstream_rpmrel}.x86_64.rpm"
+if [[ "$upstream_location" != "$expected_location" ]]; then
+  printf 'unexpected RPM location: %s (expected %s)\n' \
+    "$upstream_location" "$expected_location" >&2
   exit 1
 fi
 
-if [[ "$pkgver" != "$plist_pkgver" ]]; then
-  printf 'version mismatch in %s: package.json=%s Info.plist=%s\n' "Codex-latest-x64.dmg" "$pkgver" "$plist_pkgver" >&2
-  exit 1
-fi
+update_pkgbuild_var "pkgver" "$upstream_pkgver"
+update_pkgbuild_var "_rpmrel" "$upstream_rpmrel"
+update_pkgbuild_var "pkgrel" "1"
+sed -i -E \
+  "s|^sha256sums=.*|sha256sums=('${upstream_sha256}')|" \
+  PKGBUILD
 
-update_pkgbuild_var "pkgver" "$pkgver"
-update_pkgbuild_var "_electron_ver" "$electron_ver"
-update_pkgbuild_var "_codex_cli_ver" "$codex_cli_ver"
-update_pkgbuild_var "_better_sqlite3_ver" "$better_sqlite3_ver"
-update_pkgbuild_var "_node_pty_ver" "$node_pty_ver"
-
-updpkgsums
 makepkg --printsrcinfo > .SRCINFO
 "$repo_dir/packaging-tools/build.sh" -C -f -si "$@"

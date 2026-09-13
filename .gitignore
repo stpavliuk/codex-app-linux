@@ -4,6 +4,7 @@ electron-v*-linux-x64.zip
 better-sqlite3-*.tgz
 node-pty-*.tgz
 codex-*-linux-x64.tgz
+chatgpt-*.x86_64.rpm
 src
 pkg
 __pycache__/

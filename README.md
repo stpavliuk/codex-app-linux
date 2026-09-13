@@ -1,23 +1,37 @@
 # codex-app-linux
 
-Unofficial Arch Linux packaging for the OpenAI Codex desktop app.
+Arch Linux packaging for OpenAI's official Linux desktop application. OpenAI
+publishes the application as **ChatGPT**, with Codex included.
 
-This repo repackages the upstream macOS DMG into a native Arch package by:
-- reusing the shipped app assets
-- rebuilding the Linux native modules against the matching Electron version
-- swapping in the Linux Codex CLI runtime
-- patching the desktop bundle so the editor picker includes Linux targets
+The package directly repacks OpenAI's official Fedora RPM. It does not modify
+the application bundle or install OpenAI's Fedora package repository.
 
 ## Installation
 
-Build and install from the repo root with:
+Build and install from the repository root:
 
 ```bash
 makepkg -si
 ```
 
-After installation, launch the app with:
+Launch the application with:
 
 ```bash
-codex-app
+chatgpt
 ```
+
+`codex-app` remains available as a compatibility alias for installations made
+from earlier versions of this repository.
+
+The official Linux preview supports XWayland by default. To request native
+Wayland explicitly, run:
+
+```bash
+chatgpt --ozone-platform=wayland
+```
+
+## Updating
+
+`packaging-tools/update.sh` reads OpenAI's RPM repository metadata, updates the
+package version and checksum, regenerates `.SRCINFO`, and builds the new
+package.
