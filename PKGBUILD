@@ -1,5 +1,5 @@
 pkgname=codex-app-bin
-pkgver=26.924.22138
+pkgver=26.1007.21434
 _rpmrel=1
 pkgrel=1
 pkgdesc="Official OpenAI ChatGPT desktop app with Codex, repackaged for Arch Linux"
@@ -48,7 +48,7 @@ options=('!debug' '!strip')
 source=(
   "chatgpt-${pkgver}-${_rpmrel}.x86_64.rpm::https://persistent.oaistatic.com/codex-app-prod/linux/rpm/x86_64/chatgpt-${pkgver}-${_rpmrel}.x86_64.rpm"
 )
-sha256sums=('c36c14af21c67465dcef6d647e717aed2e1fc186a18a4acb82db7ca777a233c9')
+sha256sums=('c4537df641fc845e8006a1e211f6a718201a5acbbf28488200c378a625b43178')
 
 package() {
   cd "$srcdir"
