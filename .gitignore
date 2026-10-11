@@ -1,12 +1,6 @@
-build/
-Codex-latest-x64.dmg
-electron-v*-linux-x64.zip
-better-sqlite3-*.tgz
-node-pty-*.tgz
-codex-*-linux-x64.tgz
 chatgpt-*.x86_64.rpm
-src
-pkg
-__pycache__/
+src/
+pkg/
 *.pkg.tar.zst
 *.pkg.tar.zst.sig
+build/
